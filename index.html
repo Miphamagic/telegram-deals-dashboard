@@ -90,6 +90,98 @@ body::after {
   letter-spacing: 1px;
 }
 
+/* === INSIGHT CARDS === */
+.insight-section { margin-bottom:28px; }
+.insight-section h2 {
+  font-size:16px;
+  font-weight:700;
+  color:#C8FF00;
+  margin-bottom:16px;
+  letter-spacing:1px;
+  display:flex;align-items:center;gap:8px;
+}
+.insight-section h2::before {
+  content:'';
+  display:inline-block;
+  width:4px;height:20px;
+  background:linear-gradient(180deg,#C8FF00,#00FF88);
+  border-radius:2px;
+}
+.insight-grid {
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(340px, 1fr));
+  gap:16px;
+}
+.insight-card {
+  position:relative;
+  background:rgba(10,10,10,0.85);
+  border:1px solid rgba(200,255,0,0.08);
+  border-radius:12px;
+  padding:20px 20px 18px;
+  overflow:hidden;
+  backdrop-filter:blur(6px);
+}
+.insight-card::before {
+  content:'';
+  position:absolute;
+  top:0;left:0;right:0;
+  height:3px;
+  border-radius:12px 12px 0 0;
+}
+.insight-card.green::before { background:linear-gradient(90deg,#C8FF00,#00FF88); }
+.insight-card.purple::before { background:linear-gradient(90deg,#A050FF,#C8FF00); }
+.insight-card.yellow::before { background:linear-gradient(90deg,#FFDC00,#C8FF00); }
+.insight-card.cyan::before { background:linear-gradient(90deg,#00E5CC,#00FF88); }
+.insight-card.pink::before { background:linear-gradient(90deg,#FF6B9D,#A050FF); }
+.insight-card h3 {
+  font-size:13px;
+  font-weight:600;
+  color:rgba(200,255,0,0.7);
+  margin-bottom:10px;
+  letter-spacing:0.5px;
+  display:flex;align-items:center;gap:6px;
+}
+.insight-card p {
+  font-size:13px;
+  line-height:1.8;
+  color:rgba(255,255,255,0.65);
+  font-family:'Noto Sans SC',sans-serif;
+}
+.insight-card .highlight {
+  color:#C8FF00;
+  font-weight:600;
+}
+.insight-card .highlight-purple {
+  color:#c084fc;
+  font-weight:600;
+}
+.insight-card .highlight-yellow {
+  color:#FFDC00;
+  font-weight:600;
+}
+.insight-card ul {
+  margin:8px 0 0 0;
+  padding-left:16px;
+  list-style:none;
+}
+.insight-card ul li {
+  font-size:12.5px;
+  line-height:1.9;
+  color:rgba(255,255,255,0.6);
+  font-family:'Noto Sans SC',sans-serif;
+  position:relative;
+  padding-left:14px;
+}
+.insight-card ul li::before {
+  content:'';
+  position:absolute;
+  left:0;top:10px;
+  width:5px;height:5px;
+  border-radius:50%;
+  background:#C8FF00;
+  box-shadow:0 0 4px rgba(200,255,0,0.5);
+}
+
 /* === TABS === */
 .tabs {
   display: flex;
@@ -393,13 +485,29 @@ select.ch-filter:focus { border-color: rgba(200,255,0,0.4); }
 .detail-table tr:hover td { background:rgba(200,255,0,0.03); color:rgba(255,255,255,0.7); }
 .detail-table .thumb { width:60px; height:60px; object-fit:cover; border-radius:8px; }
 .detail-table .txt-cell {
-  max-width:350px;
+  max-width:500px;
   direction:ltr;
   text-align:left;
   line-height:1.6;
   word-break:break-word;
   font-family: 'Noto Sans SC', sans-serif;
+  white-space:pre-wrap;
+  position:relative;
 }
+.detail-table tr.clickable-row { cursor:pointer; }
+.detail-table tr.clickable-row:hover td { background:rgba(200,255,0,0.06); }
+.detail-table tr.clickable-row td:first-child::before {
+  content:'';
+  display:inline-block;
+  width:6px; height:6px;
+  background:#C8FF00;
+  border-radius:50%;
+  margin-right:6px;
+  vertical-align:middle;
+  box-shadow:0 0 6px rgba(200,255,0,0.5);
+}
+.stats-table tr.clickable-row { cursor:pointer; }
+.stats-table tr.clickable-row:hover td { background:rgba(200,255,0,0.06); }
 .detail-table .link-cell { max-width:200px; word-break:break-all; }
 .detail-table .link-cell a { color:#A8FF00; text-decoration:none; font-size:11px; }
 .detail-table .link-cell a:hover { text-decoration:underline; }
@@ -688,6 +796,45 @@ select.ch-filter:focus { border-color: rgba(200,255,0,0.4); }
 
 <!-- Module 2: Statistics -->
 <div class="panel" id="panel1">
+
+  <!-- Insight Analysis Section -->
+  <div class="insight-section">
+    <h2>Key Insights</h2>
+    <div class="insight-grid">
+
+      <div class="insight-card green">
+        <h3>&#128640; 频道策略对比</h3>
+        <p><span class="highlight">AliBuy4</span>（日均6.7帖，平均浏览9.2K）和 <span class="highlight">haregakaniti</span>（日均22帖，平均浏览9.1K）走"精品路线"——发帖少但单帖互动极高。而 <span class="highlight-purple">Greatdealsonline2322</span> 日均42.5帖（最高产），但平均浏览仅449，是典型的"刷屏路线"。说明对以色列用户来说，<span class="highlight">发帖质量远比数量重要</span>。</p>
+      </div>
+
+      <div class="insight-card purple">
+        <h3>&#9200; 发帖时间双峰分布</h3>
+        <p>发帖时间呈双峰分布（以色列夏令时）：第一个高峰在早上 <span class="highlight">07:00</span>（107条），第二个高峰在晚间 <span class="highlight">20:00-22:00</span>（合计280条，占全天20%）。凌晨 01:00-05:00 几乎无人发帖。值得注意的是，07:00 和 09:00 发出的帖子平均浏览量最高（<span class="highlight">4100-4300</span>），说明以色列用户早上刷帖时注意力最集中。</p>
+      </div>
+
+      <div class="insight-card yellow">
+        <h3>&#128332; 安息日发帖骤降</h3>
+        <p>周六仅 <span class="highlight-yellow">126条</span>（占9.2%），因为犹太安息日（Shabbat，周五日落至周六日落）多数频道停更。周日恢复到207条。周一周二最活跃（239-252条）。</p>
+      </div>
+
+      <div class="insight-card cyan">
+        <h3>&#128293; 高浏览帖的4个关键特征</h3>
+        <ul>
+          <li><span class="highlight">47%</span> 的爆款帖出现在晚间19:00-23:00——以色列人下班回家后的黄金时段</li>
+          <li>TOP 30 被 <span class="highlight">AliBuy4</span> 和 <span class="highlight">haregakaniti</span> 垄断（各占14条），这两家频道的选品和文案质量明显更优</li>
+          <li>含图率 <span class="highlight-purple">&gt;80%</span> 是高浏览帖的标配，几乎每条爆款都配了产品实拍图</li>
+          <li>标题关键词集中在 <span class="highlight-yellow">"价格错误""史上最低""疯了""Bug价""免运"</span>——紧迫感词汇是以色列消费者最敏感的刺激点</li>
+        </ul>
+      </div>
+
+      <div class="insight-card pink">
+        <h3>&#128722; 高浏览帖热门品类</h3>
+        <p>家居寝具（枕头/被子）、数码配件（充电线/耳机）、车载用品、平台大促汇总帖。其中 <span class="highlight">平台大促汇总帖</span>（如"AliExpress 大促热门优惠汇总"）往往能获得全周最高浏览。</p>
+      </div>
+
+    </div>
+  </div>
+
   <div class="stats-grid" id="statsGrid"></div>
   <div class="chart-grid">
     <div class="chart-box"><h3>Channel Performance</h3><canvas id="chChart"></canvas></div>
@@ -982,7 +1129,8 @@ function buildStats() {
     const preview = cnText
       ? cnText.substring(0, 80).replace(/\n/g, ' ') + (cnText.length > 80 ? '...' : '')
       : p.txt.substring(0, 80).replace(/\n/g, ' ') + (p.txt.length > 80 ? '...' : '');
-    topHtml += `<tr><td>${i+1}</td><td style="color:${CH_COLORS[p.ch]}">${CH_SHORT[p.ch]}</td><td>${p.v.toLocaleString()}</td><td>${p.t.substring(5,16)}</td><td>${formatPrice(p.pr) || '-'}</td><td style="max-width:350px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:'Noto Sans SC',sans-serif;">${escHtml(preview)}</td></tr>`;
+    const postIdx = DATA.indexOf(p);
+    topHtml += `<tr class="clickable-row" onclick="openMiniCard(${postIdx})"><td>${i+1}</td><td style="color:${CH_COLORS[p.ch]}">${CH_SHORT[p.ch]}</td><td>${p.v.toLocaleString()}</td><td>${p.t.substring(5,16)}</td><td>${formatPrice(p.pr) || '-'}</td><td style="max-width:350px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:'Noto Sans SC',sans-serif;">${escHtml(preview)}</td></tr>`;
   });
   topHtml += '</tbody>';
   document.getElementById('topTable').innerHTML = topHtml;
@@ -1034,16 +1182,18 @@ function renderDetailTable() {
 
   document.getElementById('detailBody').innerHTML = page.map(p => {
     const cnText = getTranslation(p.txt);
-    const displayText = cnText ? cnText.substring(0, 200) + (cnText.length > 200 ? '...' : '') : p.txt.substring(0, 200) + (p.txt.length > 200 ? '...' : '');
-    return `<tr>
+    const fullText = cnText || p.txt;
+    const displayText = fullText.length > 300 ? fullText.substring(0, 300) : fullText;
+    const postIdx = DATA.indexOf(p);
+    return `<tr class="clickable-row" onclick="openMiniCard(${postIdx})">
     <td style="color:${CH_COLORS[p.ch]};font-weight:600;white-space:nowrap;">${CH_SHORT[p.ch]}</td>
     <td style="font-size:11px;">${p.id}</td>
-    <td>${p.img ? '<img class="thumb" loading="lazy" src="'+escHtml(p.img)+'" onerror="this.src=\'\'" onclick="openLightbox(this.src)">' : '-'}</td>
+    <td>${p.img ? '<img class="thumb" loading="lazy" src="'+escHtml(p.img)+'" onerror="this.src=\'\'" onclick="event.stopPropagation();openLightbox(this.src)">' : '-'}</td>
     <td style="white-space:nowrap;font-size:11px;">${p.t}</td>
     <td style="font-weight:600;color:#C8FF00;">${p.v.toLocaleString()}</td>
     <td style="color:#A8FF00;font-weight:600;white-space:nowrap;">${formatPrice(p.pr) || '-'}</td>
     <td class="txt-cell">${escHtml(displayText)}</td>
-    <td class="link-cell">${p.lnk.map(l => '<a href="'+escHtml(l)+'" target="_blank">'+escHtml(l.substring(0,40))+'</a>').join('<br>') || '-'}</td>
+    <td class="link-cell">${p.lnk.map(l => '<a href="'+escHtml(l)+'" target="_blank" onclick="event.stopPropagation()">'+escHtml(l.substring(0,40))+'</a>').join('<br>') || '-'}</td>
   </tr>`;
   }).join('');
 
