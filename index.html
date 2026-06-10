@@ -44,9 +44,16 @@ select.ch-filter { padding:7px 12px; font-size:13px; border:1px solid #30363d; b
 .card .hover-overlay { display:none; position:absolute; top:0; left:0; right:0; bottom:0; background:rgba(13,17,23,0.95); padding:16px; overflow-y:auto; z-index:20; }
 .card:hover .hover-overlay { display:flex; flex-direction:column; }
 .hover-overlay .hover-title { font-size:14px; font-weight:700; color:#58a6ff; margin-bottom:8px; }
-.hover-overlay .hover-text { font-size:13px; line-height:1.6; color:#c9d1d9; direction:rtl; text-align:right; white-space:pre-wrap; word-break:break-word; overflow-y:auto; flex:1; }
+.hover-overlay .hover-text { font-size:13px; line-height:1.6; color:#c9d1d9; white-space:pre-wrap; word-break:break-word; overflow-y:auto; flex:1; }
+.hover-overlay .hover-text.rtl { direction:rtl; text-align:right; }
+.hover-overlay .hover-text.ltr { direction:ltr; text-align:left; }
 .hover-overlay .hover-link { font-size:12px; color:#58a6ff; text-decoration:none; margin-top:8px; display:inline-block; }
 .hover-overlay .hover-link:hover { text-decoration:underline; }
+.lang-toggle { display:inline-flex; background:#21262d; border-radius:6px; overflow:hidden; margin-left:8px; }
+.lang-toggle button { background:none; border:none; color:#8b92a5; padding:4px 10px; font-size:12px; cursor:pointer; font-weight:600; }
+.lang-toggle button.active { background:#58a6ff; color:#fff; }
+.translating { color:#8b92a5; font-style:italic; animation:pulse 1.5s infinite; }
+@keyframes pulse { 0%,100%{ opacity:1; } 50%{ opacity:0.5; } }
 .load-more { text-align:center; padding:20px; }
 .load-more button { padding:10px 32px; font-size:14px; border:1px solid #30363d; background:#21262d; color:#c9d1d9; border-radius:8px; cursor:pointer; }
 .load-more button:hover { background:#30363d; }
@@ -158,6 +165,10 @@ select.ch-filter { padding:7px 12px; font-size:13px; border:1px solid #30363d; b
     <select class="ch-filter" id="catFilter" onchange="galleryPage=0;renderGallery()">
       <option value="">All Categories</option>
     </select>
+    <div class="lang-toggle" id="langToggle">
+      <button class="active" onclick="setLang('zh')">&#127464;&#127475; 中文</button>
+      <button onclick="setLang('he')">&#127470;&#127473; עברית</button>
+    </div>
     <span id="galleryCount" style="font-size:13px;color:#8b92a5;"></span>
   </div>
   <div class="grid" id="galleryGrid"></div>
@@ -401,6 +412,76 @@ function buildTrend() {
   document.getElementById('popTable').innerHTML = html;
 }
 
+// ========== TRANSLATION ENGINE ==========
+let _transDB = null;
+let _lang = 'zh';  // Default to Chinese
+
+function openTransDB() {
+  if (_transDB) return Promise.resolve(_transDB);
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('TransDB', 1);
+    req.onupgradeneeded = e => e.target.result.createObjectStore('t');
+    req.onsuccess = e => { _transDB = e.target.result; resolve(_transDB); };
+    req.onerror = () => resolve(null);
+  });
+}
+
+function getTrans(text) {
+  return openTransDB().then(db => {
+    if (!db) return null;
+    return new Promise(resolve => {
+      const tx = db.transaction('t', 'readonly');
+      const r = tx.objectStore('t').get(text.substring(0, 200));
+      r.onsuccess = () => resolve(r.result || null);
+      r.onerror = () => resolve(null);
+    });
+  });
+}
+
+function saveTrans(text, zh) {
+  return openTransDB().then(db => {
+    if (!db) return;
+    const tx = db.transaction('t', 'readwrite');
+    tx.objectStore('t').put(zh, text.substring(0, 200));
+  });
+}
+
+async function translateBatch(texts) {
+  const toTranslate = [];
+  const results = {};
+  for (const t of texts) {
+    const cached = await getTrans(t);
+    if (cached) results[t] = cached;
+    else toTranslate.push(t);
+  }
+  if (!toTranslate.length) return results;
+  // Translate in parallel, 5 at a time
+  for (let i = 0; i < toTranslate.length; i += 5) {
+    const batch = toTranslate.slice(i, i + 5);
+    const promises = batch.map(async (text) => {
+      try {
+        const resp = await fetch('https://translate.googleapis.com/translate_a/single?client=gtx&sl=iw&tl=zh-CN&dt=t&q=' + encodeURIComponent(text.substring(0, 500)));
+        const data = await resp.json();
+        const translated = data[0].map(s => s[0]).join('');
+        saveTrans(text, translated);
+        results[text] = translated;
+      } catch(e) {
+        results[text] = null;
+      }
+    });
+    await Promise.all(promises);
+    if (i + 5 < toTranslate.length) await new Promise(r => setTimeout(r, 200));
+  }
+  return results;
+}
+
+function setLang(lang) {
+  _lang = lang;
+  document.querySelectorAll('#langToggle button').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  renderGallery();
+}
+
 // ========== MODULE 1: GALLERY ==========
 let gallerySort = 'time';
 let galleryPage = 0;
@@ -472,12 +553,15 @@ function renderGallery() {
   document.getElementById('galleryCount').textContent = show.length + ' / ' + posts.length + ' posts';
   document.getElementById('loadMore').style.display = show.length < posts.length ? 'block' : 'none';
 
-  grid.innerHTML = show.map(p => {
+  grid.innerHTML = show.map((p, idx) => {
     const color = CH_COLORS[p.ch] || '#666';
     const short = CH_SHORT[p.ch] || p.ch;
     const priceStr = formatPrice(p.pr);
     const linkHtml = p.lnk.length ? p.lnk.map(l => '<a class="hover-link" href="'+escHtml(l)+'" target="_blank" onclick="event.stopPropagation()">&#128279; '+escHtml(l.substring(0,45))+'...</a>').join('<br>') : '';
-    return `<div class="card">
+    const isZh = _lang === 'zh';
+    const textDir = isZh ? 'ltr' : 'rtl';
+    const displayText = isZh ? '<span class="translating">翻译中...</span>' : escHtml(p.txt.substring(0, 500));
+    return `<div class="card" data-tidx="${idx}">
       ${p.img ? '<img loading="lazy" src="'+escHtml(p.img)+'" onerror="this.style.display=\'none\'">' : '<div style="height:200px;background:#0d1117;display:flex;align-items:center;justify-content:center;color:#30363d;font-size:40px;">&#128247;</div>'}
       ${priceStr ? '<div class="price-badge">'+priceStr+'</div>' : ''}
       <div class="card-body">
@@ -489,11 +573,32 @@ function renderGallery() {
       </div>
       <div class="hover-overlay">
         <div class="hover-title">${short} &middot; ${formatViews(p.v)} views &middot; ${p.t ? p.t.substring(0,16).replace('T',' ') : ''}</div>
-        <div class="hover-text">${escHtml(p.txt)}</div>
+        <div class="hover-text ${textDir}" data-htext="1">${displayText}</div>
         ${linkHtml}
       </div>
     </div>`;
   }).join('');
+
+  // Trigger translations for visible cards if Chinese mode
+  if (_lang === 'zh') {
+    const texts = show.map(p => p.txt);
+    translateBatch(texts).then(results => {
+      grid.querySelectorAll('.card').forEach(card => {
+        const idx = parseInt(card.getAttribute('data-tidx'));
+        const txt = texts[idx];
+        const el = card.querySelector('[data-htext]');
+        if (!el) return;
+        const translated = results[txt];
+        if (translated) {
+          el.textContent = translated;
+          el.className = 'hover-text ltr';
+        } else if (translated === null) {
+          el.textContent = txt.substring(0, 500);
+          el.className = 'hover-text rtl';
+        }
+      });
+    });
+  }
 }
 
 function loadMoreCards() { galleryPage++; renderGallery(); }
@@ -604,7 +709,7 @@ function buildStats() {
   const top30 = [...DATA].sort((a,b) => b.v - a.v).slice(0, 30);
   let topHtml = '<thead><tr><th>#</th><th>Channel</th><th>Views</th><th>Time</th><th>Price</th><th>Preview</th></tr></thead><tbody>';
   top30.forEach((p, i) => {
-    const preview = p.txt.replace(/\n/g, ' ');
+    const preview = p.txt.substring(0, 80).replace(/\n/g, ' ') + (p.txt.length > 80 ? '...' : '');
     topHtml += `<tr><td>${i+1}</td><td style="color:${CH_COLORS[p.ch]}">${CH_SHORT[p.ch]}</td><td>${p.v.toLocaleString()}</td><td>${p.t ? p.t.substring(5,16).replace('T',' ') : ''}</td><td>${formatPrice(p.pr) || '-'}</td><td style="direction:rtl;text-align:right;max-width:350px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(preview)}</td></tr>`;
   });
   topHtml += '</tbody>';
@@ -686,7 +791,7 @@ function renderDetailTable() {
     <td style="font-weight:600;color:#58a6ff;">${p.v.toLocaleString()}</td>
     <td style="font-size:11px;white-space:nowrap;">${p.cat || '-'}${p.pl ? ' <span style="color:#58a6ff;">('+escHtml(p.pl)+')</span>' : ''}</td>
     <td style="color:#3fb950;font-weight:600;white-space:nowrap;">${formatPrice(p.pr) || '-'}</td>
-    <td class="txt-cell">${escHtml(p.txt)}</td>
+    <td class="txt-cell">${escHtml(p.txt.substring(0, 200))}${p.txt.length > 200 ? '...' : ''}</td>
     <td class="link-cell">${p.lnk.map(l => '<a href="'+escHtml(l)+'" target="_blank">'+escHtml(l.substring(0,40))+'</a>').join('<br>') || '-'}</td>
   </tr>`).join('');
 
