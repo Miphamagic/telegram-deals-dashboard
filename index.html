@@ -141,12 +141,12 @@ select.ch-filter { padding:7px 12px; font-size:13px; border:1px solid #30363d; b
 <div class="loading-overlay" id="loadingOverlay">
   <div class="loading-spinner"></div>
   <div class="loading-text">Loading dashboard data...</div>
-  <div class="loading-sub" id="loadingProgress">Fetching 13,549 posts</div>
+  <div class="loading-sub" id="loadingProgress">Fetching 14,298 posts</div>
 </div>
 <div class="header">
   <div>
     <h1>Israel Telegram Deals Dashboard</h1>
-    <div class="meta">9 Channels &middot; 14,140 Posts &middot; Mar 12 - Jun 9, 2026 (90 Days)</div>
+    <div class="meta">9 Channels &middot; 14,298 Posts &middot; Mar 12 - Jun 11, 2026 (92 Days)</div>
   </div>
 </div>
 <div class="tabs">
@@ -930,7 +930,7 @@ function renderDetailTable() {
 
 // ========== INIT (async data load) ==========
 (async function init() {
-  document.getElementById('loadingProgress').textContent = 'Fetching 14,140 posts...';
+  document.getElementById('loadingProgress').textContent = 'Fetching 14,298 posts...';
   try {
     const resp = await fetch('data.json');
     const loaded = await resp.json();
