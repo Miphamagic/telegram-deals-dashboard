@@ -273,6 +273,7 @@ select.ch-filter { padding:7px 12px; font-size:13px; border:1px solid #30363d; b
         <th onclick="sortDetail('t')">Time (UTC)</th>
         <th onclick="sortDetail('v')">Views</th>
         <th>Category</th>
+        <th onclick="sortDetail('sold')">Sold</th>
         <th>Prices</th>
         <th>Text Content</th>
         <th>Links</th>
@@ -610,6 +611,12 @@ function formatViews(v) {
   return v.toString();
 }
 
+function formatSold(s) {
+  if (s >= 10000) return (s/1000).toFixed(0) + 'K sold';
+  if (s >= 1000) return (s/1000).toFixed(1) + 'K sold';
+  return s + ' sold';
+}
+
 function escHtml(s) {
   const d = document.createElement('div');
   d.textContent = s;
@@ -735,6 +742,7 @@ function renderGallery() {
         <div class="ch-tag"><span class="dot" style="background:${color}"></span>${short}</div>
         ${p.brand ? '<span style="display:inline-block;background:#2a1f4e;color:#bc8cff;padding:1px 6px;border-radius:8px;font-size:11px;margin:2px 2px 2px 0;font-weight:600;">'+escHtml(p.brand)+'</span>' : ''}
         ${p.cat && p.cat !== '其他' ? '<span style="display:inline-block;background:#21262d;color:#8b92a5;padding:1px 6px;border-radius:8px;font-size:11px;margin:2px 2px 2px 0;">'+escHtml(p.cat)+'</span>' : ''}
+        ${p.sold ? '<span style="display:inline-block;background:#1a3a2a;color:#3fb950;padding:1px 6px;border-radius:8px;font-size:11px;margin:2px 2px 2px 0;" title="Orders/Sold">&#128722; '+formatSold(p.sold)+'</span>' : ''}
         ${p.pl ? '<span style="display:inline-block;background:#1c3a5c;color:#58a6ff;padding:1px 6px;border-radius:8px;font-size:11px;margin:2px 2px 2px 0;">'+escHtml(p.pl)+'</span>' : ''}
         <div class="views">&#128065; <span>${formatViews(p.v)}</span> views</div>
         <div class="time-tag">${p.t ? p.t.substring(0,16).replace('T',' ') : ''}</div>
@@ -1042,6 +1050,7 @@ function renderDetailTable() {
     <td style="white-space:nowrap;font-size:11px;">${p.t ? p.t.substring(0,16).replace('T',' ') : ''}</td>
     <td style="font-weight:600;color:#58a6ff;">${p.v.toLocaleString()}</td>
     <td style="font-size:11px;white-space:nowrap;">${p.cat || '-'}${p.pl ? ' <span style="color:#58a6ff;">('+escHtml(p.pl)+')</span>' : ''}</td>
+    <td style="font-size:11px;color:#3fb950;white-space:nowrap;">${p.sold ? formatSold(p.sold) : '-'}</td>
     <td style="color:#3fb950;font-weight:600;white-space:nowrap;">${formatPrice(p.pr) || '-'}</td>
     <td class="txt-cell">${escHtml(p.txt.substring(0, 200))}${p.txt.length > 200 ? '...' : ''}</td>
     <td class="link-cell">${p.lnk.map(l => '<a href="'+escHtml(l)+'" target="_blank">'+escHtml(l.substring(0,40))+'</a>').join('<br>') || '-'}</td>
