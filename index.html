@@ -141,12 +141,12 @@ select.ch-filter { padding:7px 12px; font-size:13px; border:1px solid #30363d; b
 <div class="loading-overlay" id="loadingOverlay">
   <div class="loading-spinner"></div>
   <div class="loading-text">Loading dashboard data...</div>
-  <div class="loading-sub" id="loadingProgress">Fetching 14,298 posts</div>
+  <div class="loading-sub" id="loadingProgress">Loading 7,927 posts</div>
 </div>
 <div class="header">
   <div>
     <h1>Israel Telegram Deals Dashboard</h1>
-    <div class="meta">9 Channels &middot; 14,298 Posts &middot; Mar 12 - Jun 11, 2026 (92 Days)</div>
+    <div class="meta">9 Channels &middot; 7,927 Posts (with images) &middot; Mar 12 - Jun 11, 2026 (92 Days)</div>
   </div>
 </div>
 <div class="tabs">
@@ -550,7 +550,7 @@ function getFilteredPosts() {
   const ch = document.getElementById('chFilter').value;
   const period = document.getElementById('periodFilter').value;
   const cat = document.getElementById('catFilter').value;
-  let posts = DATA;
+  let posts = DATA.filter(p => p.img);
   if (ch) posts = posts.filter(p => p.ch === ch);
   if (period) posts = posts.filter(p => getPeriod(p.t) === period);
   if (cat) posts = posts.filter(p => p.cat === cat);
@@ -875,7 +875,7 @@ function getFilteredDetail() {
   const ch = document.getElementById('detailChFilter').value;
   const cat = document.getElementById('detailCatFilter').value;
   const q = document.getElementById('searchBox').value.toLowerCase();
-  let posts = DATA;
+  let posts = DATA.filter(p => p.img);
   if (ch) posts = posts.filter(p => p.ch === ch);
   if (cat) posts = posts.filter(p => p.cat === cat);
   if (q) posts = posts.filter(p => p.txt.toLowerCase().includes(q) || p.ch.toLowerCase().includes(q) || p.id.includes(q) || (p.cat && p.cat.toLowerCase().includes(q)));
