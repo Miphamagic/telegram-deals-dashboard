@@ -176,8 +176,8 @@ select.ch-filter { padding:7px 12px; font-size:13px; border:1px solid #30363d; b
   <div class="controls">
     <label>Sort by:</label>
     <div class="btn-group" id="sortGroup">
-      <button class="active" onclick="setSort('time')">&#128337; Latest</button>
-      <button onclick="setSort('views')">&#128065; Most Viewed</button>
+      <button onclick="setSort('time')">&#128337; Latest</button>
+      <button class="active" onclick="setSort('views')">&#128065; Most Viewed</button>
       <button onclick="setSort('price')">&#128176; Price</button>
     </div>
     <label>Channel:</label>
@@ -213,8 +213,9 @@ select.ch-filter { padding:7px 12px; font-size:13px; border:1px solid #30363d; b
     <span id="galleryCount" style="font-size:13px;color:#8b92a5;"></span>
   </div>
   <div class="grid" id="galleryGrid"></div>
+  <div id="scrollSentinel" style="height:1px;"></div>
   <div class="load-more" id="loadMore" style="display:none;">
-    <button onclick="loadMoreCards()">Load More</button>
+    <span style="color:#8b92a5;font-size:13px;">Loading more posts...</span>
   </div>
 </div>
 
@@ -552,7 +553,7 @@ function setLang(lang) {
 }
 
 // ========== MODULE 1: GALLERY ==========
-let gallerySort = 'time';
+let gallerySort = 'views';
 let galleryPage = 0;
 const GALLERY_PAGE_SIZE = 40;
 
@@ -777,7 +778,28 @@ function renderGallery() {
   }
 }
 
-function loadMoreCards() { galleryPage++; renderGallery(); }
+function loadMoreCards() {
+  const posts = sortPosts(getFilteredPosts());
+  const currentCount = (galleryPage + 1) * GALLERY_PAGE_SIZE;
+  if (currentCount < posts.length) {
+    galleryPage++;
+    renderGallery();
+  }
+}
+
+// Infinite scroll: auto-load more when sentinel is near viewport
+let _scrollObserver = null;
+function setupInfiniteScroll() {
+  if (_scrollObserver) _scrollObserver.disconnect();
+  const sentinel = document.getElementById('scrollSentinel');
+  if (!sentinel) return;
+  _scrollObserver = new IntersectionObserver((entries) => {
+    if (entries[0].isIntersecting) {
+      loadMoreCards();
+    }
+  }, { rootMargin: '800px' });
+  _scrollObserver.observe(sentinel);
+}
 
 // ========== MINI CARD MODAL ==========
 let _modalPosts = [];
@@ -1128,6 +1150,7 @@ function renderDetailTable() {
   // Build brand counts for the searchable dropdown
   buildBrandCounts();
   renderGallery();
+  setupInfiniteScroll();
 })();
 </script>
 </body>
