@@ -30,6 +30,21 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .btn-group button.active { background:#388bfd; border-color:#388bfd; color:#fff; }
 .btn-group button:hover:not(.active) { background:#30363d; }
 select.ch-filter { padding:7px 12px; font-size:13px; border:1px solid #30363d; background:#21262d; color:#c9d1d9; border-radius:6px; outline:none; }
+.brand-dropdown { position:relative; display:inline-block; }
+.brand-dropdown .bd-trigger { padding:7px 12px; font-size:13px; border:1px solid #30363d; background:#21262d; color:#c9d1d9; border-radius:6px; cursor:pointer; min-width:160px; display:flex; align-items:center; justify-content:space-between; gap:8px; user-select:none; }
+.brand-dropdown .bd-trigger:hover { border-color:#484f58; }
+.brand-dropdown .bd-trigger .bd-arrow { font-size:10px; color:#6e7681; transition:transform 0.2s; }
+.brand-dropdown.open .bd-trigger .bd-arrow { transform:rotate(180deg); }
+.brand-dropdown .bd-panel { position:absolute; top:calc(100% + 4px); left:0; min-width:220px; max-height:280px; background:#21262d; border:1px solid #30363d; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,0.5); z-index:200; display:none; flex-direction:column; overflow:hidden; }
+.brand-dropdown.open .bd-panel { display:flex; }
+.brand-dropdown .bd-search { margin:8px; padding:7px 10px; font-size:13px; border:1px solid #30363d; background:#161b22; color:#c9d1d9; border-radius:6px; outline:none; }
+.brand-dropdown .bd-search:focus { border-color:#58a6ff; }
+.brand-dropdown .bd-list { overflow-y:auto; max-height:220px; padding:4px 0; }
+.brand-dropdown .bd-item { padding:7px 14px; font-size:13px; color:#c9d1d9; cursor:pointer; display:flex; align-items:center; justify-content:space-between; }
+.brand-dropdown .bd-item:hover, .brand-dropdown .bd-item.highlighted { background:#30363d; }
+.brand-dropdown .bd-item.selected { color:#58a6ff; font-weight:600; }
+.brand-dropdown .bd-item .bd-count { font-size:11px; color:#6e7681; }
+.brand-dropdown .bd-empty { padding:12px 14px; font-size:13px; color:#6e7681; text-align:center; }
 .grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:16px; }
 .card { background:#161b22; border:1px solid #21262d; border-radius:12px; overflow:hidden; transition:transform 0.2s, box-shadow 0.2s; cursor:pointer; position:relative; }
 .card:hover { transform:translateY(-4px); box-shadow: 0 8px 30px rgba(0,0,0,0.4); z-index:10; }
@@ -180,11 +195,17 @@ select.ch-filter { padding:7px 12px; font-size:13px; border:1px solid #30363d; b
     <select class="ch-filter" id="catFilter" onchange="galleryPage=0;renderGallery()">
       <option value="">All Categories</option>
     </select>
-    <label>Brand:</label>
-    <input type="text" class="search-box" id="brandSearch" placeholder="Search brand..." oninput="filterBrandOptions()" style="min-width:140px;width:160px;padding:7px 12px;font-size:13px;border-radius:6px;">
-    <select class="ch-filter" id="brandFilter" onchange="galleryPage=0;renderGallery()">
-      <option value="">All Brands</option>
-    </select>
+    <div class="brand-dropdown" id="brandDropdown">
+      <div class="bd-trigger" onclick="toggleBrandDD()">
+        <span id="bdLabel">All Brands</span>
+        <span class="bd-arrow">&#9660;</span>
+      </div>
+      <div class="bd-panel">
+        <input type="text" class="bd-search" id="bdSearch" placeholder="Search brand..." oninput="renderBrandList()" onkeydown="brandDDKeydown(event)">
+        <div class="bd-list" id="bdList"></div>
+      </div>
+    </div>
+    <input type="hidden" id="brandFilter" value="">
     <div class="lang-toggle" id="langToggle">
       <button class="active" onclick="setLang('zh')">&#127464;&#127475; 中文</button>
       <button onclick="setLang('he')">&#127470;&#127473; עברית</button>
@@ -595,29 +616,102 @@ function escHtml(s) {
   return d.innerHTML;
 }
 
-function filterBrandOptions() {
-  const q = document.getElementById('brandSearch').value.toLowerCase();
-  const sel = document.getElementById('brandFilter');
-  const currentVal = sel.value;
-  sel.innerHTML = '<option value="">All Brands</option>';
-  BRAND_LIST.forEach(b => {
-    if (!q || b.toLowerCase().includes(q)) {
-      const opt = document.createElement('option');
-      opt.value = b;
-      opt.textContent = b;
-      sel.appendChild(opt);
-    }
-  });
-  // Restore selection if still available
-  if (currentVal) {
-    const opts = sel.querySelectorAll('option');
-    for (const o of opts) {
-      if (o.value === currentVal) { sel.value = currentVal; break; }
-    }
+// ========== BRAND SEARCHABLE DROPDOWN ==========
+let _brandDDOpen = false;
+let _brandHighlight = -1;
+let _brandCounts = {};
+
+function buildBrandCounts() {
+  _brandCounts = {};
+  DATA.forEach(p => { if (p.brand) _brandCounts[p.brand] = (_brandCounts[p.brand] || 0) + 1; });
+}
+
+function toggleBrandDD() {
+  _brandDDOpen = !_brandDDOpen;
+  document.getElementById('brandDropdown').classList.toggle('open', _brandDDOpen);
+  if (_brandDDOpen) {
+    _brandHighlight = -1;
+    document.getElementById('bdSearch').value = '';
+    renderBrandList();
+    setTimeout(() => document.getElementById('bdSearch').focus(), 50);
   }
+}
+
+function renderBrandList() {
+  const q = document.getElementById('bdSearch').value.toLowerCase();
+  const list = document.getElementById('bdList');
+  const selected = document.getElementById('brandFilter').value;
+  const filtered = BRAND_LIST.filter(b => !q || b.toLowerCase().includes(q));
+
+  if (filtered.length === 0) {
+    list.innerHTML = '<div class="bd-empty">No matching brands</div>';
+    _brandHighlight = -1;
+    return;
+  }
+
+  // "All Brands" option at top
+  let html = `<div class="bd-item${!selected ? ' selected' : ''}${_brandHighlight === -1 ? ' highlighted' : ''}" onclick="selectBrand('')">All Brands</div>`;
+  filtered.forEach((b, i) => {
+    const cnt = _brandCounts[b] || 0;
+    const isSel = b === selected;
+    const isHl = (i + 1) === _brandHighlight;
+    html += `<div class="bd-item${isSel ? ' selected' : ''}${isHl ? ' highlighted' : ''}" onclick="selectBrand('${escHtml(b)}')">${escHtml(b)}<span class="bd-count">${cnt}</span></div>`;
+  });
+  list.innerHTML = html;
+
+  // Scroll highlighted into view
+  if (_brandHighlight >= 0) {
+    const items = list.querySelectorAll('.bd-item');
+    if (items[_brandHighlight]) items[_brandHighlight].scrollIntoView({ block: 'nearest' });
+  }
+}
+
+function selectBrand(brand) {
+  document.getElementById('brandFilter').value = brand;
+  document.getElementById('bdLabel').textContent = brand || 'All Brands';
+  _brandDDOpen = false;
+  document.getElementById('brandDropdown').classList.remove('open');
   galleryPage = 0;
   renderGallery();
 }
+
+function brandDDKeydown(e) {
+  const q = document.getElementById('bdSearch').value.toLowerCase();
+  const filtered = BRAND_LIST.filter(b => !q || b.toLowerCase().includes(q));
+  const total = filtered.length + 1; // +1 for "All Brands"
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    _brandHighlight = Math.min(_brandHighlight + 1, total - 1);
+    renderBrandList();
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    _brandHighlight = Math.max(_brandHighlight - 1, 0);
+    renderBrandList();
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    if (_brandHighlight === 0 || (_brandHighlight === -1 && !q)) {
+      selectBrand('');
+    } else if (_brandHighlight > 0) {
+      selectBrand(filtered[_brandHighlight - 1]);
+    } else if (q && filtered.length > 0) {
+      // No highlight yet but there are matches - select first match
+      selectBrand(filtered[0]);
+    }
+  } else if (e.key === 'Escape') {
+    _brandDDOpen = false;
+    document.getElementById('brandDropdown').classList.remove('open');
+  }
+}
+
+// Close dropdown on outside click
+document.addEventListener('click', function(e) {
+  const dd = document.getElementById('brandDropdown');
+  if (dd && !dd.contains(e.target)) {
+    _brandDDOpen = false;
+    dd.classList.remove('open');
+  }
+});
 
 function renderGallery() {
   const grid = document.getElementById('galleryGrid');
@@ -1000,14 +1094,8 @@ function renderDetailTable() {
     const opt2 = opt.cloneNode(true);
     detailCatSel.appendChild(opt2);
   });
-  // Populate brand filter
-  const brandSel = document.getElementById('brandFilter');
-  BRAND_LIST.forEach(b => {
-    const opt = document.createElement('option');
-    opt.value = b;
-    opt.textContent = b;
-    brandSel.appendChild(opt);
-  });
+  // Build brand counts for the searchable dropdown
+  buildBrandCounts();
   renderGallery();
 })();
 </script>
