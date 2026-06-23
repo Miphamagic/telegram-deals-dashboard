@@ -161,7 +161,7 @@ select.ch-filter { padding:7px 12px; font-size:13px; border:1px solid #30363d; b
 <div class="header">
   <div>
     <h1>Israel Telegram Deals Dashboard</h1>
-    <div class="meta">9 Channels &middot; 16,044 Posts (with images) &middot; Mar 12 - Jun 22, 2026 (103 Days)</div>
+    <div class="meta" id="subtitleMeta">9 Channels &middot; 16,044 Posts (with images) &middot; Loading...</div>
   </div>
 </div>
 <div class="tabs">
@@ -185,8 +185,8 @@ select.ch-filter { padding:7px 12px; font-size:13px; border:1px solid #30363d; b
     <label>Period:</label>
     <select class="ch-filter" id="periodFilter" onchange="galleryPage=0;renderGallery()">
       <option value="">All Time</option>
-      <option value="this_week">This Week (Jun 3-9)</option>
-      <option value="last_week">Last Week (May 27-Jun 2)</option>
+      <option value="this_week" id="optThisWeek">This Week</option>
+      <option value="last_week" id="optLastWeek">Last Week</option>
       <option value="may">May 2026</option>
       <option value="apr">Apr 2026</option>
       <option value="mar">Mar 2026</option>
@@ -316,6 +316,31 @@ const CATS = [{"name":"电子数码","posts":5880,"views":30088049,"avg_views":5
 const PLATS = [{"name":"AliExpress","count":10231},{"name":"Amazon","count":2183},{"name":"NewTools","count":846},{"name":"KSP","count":774},{"name":"DLZ","count":468}];
 const BRAND_LIST = ["Apple","Baseus","Xiaomi","Bosch","Makita","LEGO","Anker","Philips","UGREEN","DEWALT","Samsung","JBL","Bose","Sony","Oral-B","Milwaukee","HOTO","Ninja","70mai","Google","Columbia","Lenovo","DDPAI","Kapro","Amazfit","Braun","Karcher","Dreame","OnePlus","LG","Garmin","Logitech","PlayStation","Adidas","ANENG","Gree","ASUS","Hot Wheels","Tefal","Dyson","Nintendo","HUGO BOSS","Puma","Crocs","Casio","Canon","Brother","SanDisk","DJI","Delonghi","Rowenta","Stanley","Fisher-Price","Kindle","Ray-Ban","New Balance","Skechers","Nike","CeraVe","Decathlon","North Face","Roborock","Ecovacs","iRobot","SwitchBot","Sonoff","Shelly","Yeelight","Tapo","TP-Link","Chuwi","Razer","Corsair","MSI","Netgear","BenQ","XGIMI","Segway","Ninebot","Edifier","QCY","Haylou","Soundcore","GoPro","Insta360","Dreo","Instant Pot","KitchenAid","Electrolux","Black+Decker","Midea","Haier","Worx","Dremel","INGCO","WORKPRO","WOWSTICK","MUSTOOL","UNI-T","Jakemy","LAOA","OPPO","Realme","Motorola","Nokia","Nothing","Hisense","Panasonic","Fitbit","Seiko","Remington","Wahl","La Roche-Posay","Olay","Quechua","Epson","Kingston","WD","Seagate","Philips Hue","OXO","Zojirushi","Herman Miller","IKEA","Xbox"];
 
+// ========== DYNAMIC WEEK DATE COMPUTATION ==========
+const _MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function _fmtShort(d) { return _MONTHS[d.getMonth()] + ' ' + d.getDate(); }
+function _isoDate(d) { return d.toISOString().slice(0,10); }
+function computeWeekLabels() {
+  // Use the latest date in DAILY as "today" (avoids staleness if scrape is delayed)
+  const maxDateStr = DAILY.length ? DAILY[DAILY.length-1].date : new Date().toISOString().slice(0,10);
+  const maxDate = new Date(maxDateStr + 'T12:00:00');
+  const dayOfWeek = (maxDate.getDay() + 6) % 7; // Mon=0 .. Sun=6
+  const thisWeekStart = new Date(maxDate); thisWeekStart.setDate(maxDate.getDate() - dayOfWeek);
+  const thisWeekEnd = new Date(thisWeekStart); thisWeekEnd.setDate(thisWeekStart.getDate() + 6);
+  const lastWeekStart = new Date(thisWeekStart); lastWeekStart.setDate(thisWeekStart.getDate() - 7);
+  const lastWeekEnd = new Date(lastWeekStart); lastWeekEnd.setDate(lastWeekStart.getDate() + 6);
+  return {
+    thisWeekLabel: _fmtShort(thisWeekStart) + '-' + _fmtShort(thisWeekEnd),
+    lastWeekLabel: _fmtShort(lastWeekStart) + '-' + _fmtShort(lastWeekEnd),
+    thisWeekISO: _isoDate(thisWeekStart),
+    lastWeekISO: _isoDate(lastWeekStart),
+  };
+}
+const _WL = computeWeekLabels();
+// Update period dropdown labels
+document.getElementById('optThisWeek').textContent = 'This Week (' + _WL.thisWeekLabel + ')';
+document.getElementById('optLastWeek').textContent = 'Last Week (' + _WL.lastWeekLabel + ')';
+
 // Lazy-load Chart.js only when needed
 let _chartLoaded = false;
 function loadChartJS() {
@@ -373,12 +398,12 @@ function buildTrend() {
   const momVCls = parseFloat(momV) >= 0 ? 'up' : 'down';
 
   document.getElementById('trendStats').innerHTML = [
-    ['This Week Posts', twPosts.toLocaleString(), 'Jun 3-9', '<div class="stat-change '+wowPCls+'">WoW: '+(parseFloat(wowP)>=0?'+':'')+wowP+'%</div>'],
-    ['This Week Views', twViews.toLocaleString(), 'Jun 3-9', '<div class="stat-change '+wowVCls+'">WoW: '+(parseFloat(wowV)>=0?'+':'')+wowV+'%</div>'],
+    ['This Week Posts', twPosts.toLocaleString(), _WL.thisWeekLabel, '<div class="stat-change '+wowPCls+'">WoW: '+(parseFloat(wowP)>=0?'+':'')+wowP+'%</div>'],
+    ['This Week Views', twViews.toLocaleString(), _WL.thisWeekLabel, '<div class="stat-change '+wowVCls+'">WoW: '+(parseFloat(wowV)>=0?'+':'')+wowV+'%</div>'],
     ['May Posts', mayPosts.toLocaleString(), 'Full month', '<div class="stat-change '+momPCls+'">MoM: '+(parseFloat(momP)>=0?'+':'')+momP+'%</div>'],
     ['May Views', mayViews.toLocaleString(), 'Full month', '<div class="stat-change '+momVCls+'">MoM: '+(parseFloat(momV)>=0?'+':'')+momV+'%</div>'],
-    ['90-Day Posts', DATA.length.toLocaleString(), 'Mar 12 - Jun 9', ''],
-    ['90-Day Views', DATA.reduce((s,p)=>s+p.v,0).toLocaleString(), 'Mar 12 - Jun 9', ''],
+    ['Total Posts', DATA.length.toLocaleString(), DAILY[0].date.slice(5)+' – '+DAILY[DAILY.length-1].date.slice(5), ''],
+    ['Total Views', DATA.reduce((s,p)=>s+p.v,0).toLocaleString(), DAILY[0].date.slice(5)+' – '+DAILY[DAILY.length-1].date.slice(5), ''],
   ].map(([l,v,s,extra]) => `<div class="stat-card"><div class="stat-label">${l}</div><div class="stat-value">${v}</div><div class="stat-sub">${s}</div>${extra}</div>`).join('');
 
   // Daily posts stacked chart
@@ -430,8 +455,8 @@ function buildTrend() {
     data: {
       labels: CHANNELS.map(ch => CH_SHORT[ch]),
       datasets: [
-        { label: 'This Week (Jun 3-9)', data: CHANNELS.map(ch => tw[ch].posts), backgroundColor: '#58a6ffcc' },
-        { label: 'Last Week (May 27-Jun 2)', data: CHANNELS.map(ch => lw[ch].posts), backgroundColor: '#58a6ff44' }
+        { label: 'This Week ('+_WL.thisWeekLabel+')', data: CHANNELS.map(ch => tw[ch].posts), backgroundColor: '#58a6ffcc' },
+        { label: 'Last Week ('+_WL.lastWeekLabel+')', data: CHANNELS.map(ch => lw[ch].posts), backgroundColor: '#58a6ff44' }
       ]
     },
     options: {
@@ -567,8 +592,8 @@ function setSort(mode) {
 
 function getPeriod(t) {
   if (!t) return null;
-  if (t >= '2026-06-03') return 'this_week';
-  if (t >= '2026-05-27') return 'last_week';
+  if (t >= _WL.thisWeekISO) return 'this_week';
+  if (t >= _WL.lastWeekISO) return 'last_week';
   if (t >= '2026-05-01') return 'may';
   if (t >= '2026-04-01') return 'apr';
   if (t >= '2026-03-12') return 'mar';
@@ -1149,6 +1174,11 @@ function renderDetailTable() {
   });
   // Build brand counts for the searchable dropdown
   buildBrandCounts();
+  // Update subtitle with actual date range
+  const firstDate = DAILY[0].date, lastDate = DAILY[DAILY.length-1].date;
+  const totalDays = Math.round((new Date(lastDate) - new Date(firstDate)) / 86400000) + 1;
+  const imgPosts = DATA.filter(p => p.img).length;
+  document.getElementById('subtitleMeta').innerHTML = CHANNELS.length + ' Channels &middot; ' + imgPosts.toLocaleString() + ' Posts (with images) &middot; ' + firstDate.slice(5).replace('-',' ') + ' - ' + lastDate.slice(5).replace('-',' ') + ', 2026 (' + totalDays + ' Days)';
   renderGallery();
   setupInfiniteScroll();
 })();
