@@ -802,10 +802,12 @@ function buildCard(p, idx) {
   const color = CH_COLORS[p.ch] || '#666';
   const short = CH_SHORT[p.ch] || p.ch;
   const priceStr = formatPrice(p.pr);
-  const linkHtml = p.lnk.length ? p.lnk.map(l => '<a class="hover-link" href="'+escHtml(l)+'" target="_blank" onclick="event.stopPropagation()">&#128279; '+escHtml(l.substring(0,45))+'...</a>').join('<br>') : '';
+  const lnk = Array.isArray(p.lnk) ? p.lnk : [];
+  const linkHtml = lnk.length ? lnk.map(l => '<a class="hover-link" href="'+escHtml(l)+'" target="_blank" onclick="event.stopPropagation()">&#128279; '+escHtml(String(l).substring(0,45))+'...</a>').join('<br>') : '';
   const isZh = _lang === 'zh';
   const textDir = isZh ? 'ltr' : 'rtl';
-  const displayText = isZh ? '<span class="translating">翻译中...</span>' : escHtml(p.txt.substring(0, 500));
+  const txt = p.txt || '';
+  const displayText = isZh ? '<span class="translating">翻译中...</span>' : escHtml(txt.substring(0, 500));
   const div = document.createElement('div');
   div.className = 'card';
   div.setAttribute('data-tidx', idx);
@@ -977,7 +979,8 @@ async function renderModal() {
     }
   }
 
-  const linksHtml = p.lnk.map(l => '<a href="'+escHtml(l)+'" target="_blank" rel="noopener">'+escHtml(l.substring(0,80))+'</a>').join('');
+  const pLinks = Array.isArray(p.lnk) ? p.lnk : [];
+  const linksHtml = pLinks.map(l => '<a href="'+escHtml(l)+'" target="_blank" rel="noopener">'+escHtml(String(l).substring(0,80))+'</a>').join('');
 
   document.getElementById('modalContent').innerHTML = `
     ${p.img ? '<img class="modal-img" src="'+escHtml(p.img)+'" onerror="this.style.display=\'none\'">' : ''}
@@ -1016,10 +1019,10 @@ function buildStats() {
   window._statsBuilt = true;
   const total = DATA.length;
   const withImg = DATA.filter(p => p.img).length;
-  const withPrice = DATA.filter(p => p.pr.length > 0).length;
-  const totalViews = DATA.reduce((s,p) => s + p.v, 0);
+  const withPrice = DATA.filter(p => p.pr && p.pr.length > 0).length;
+  const totalViews = DATA.reduce((s,p) => s + (p.v||0), 0);
   const avgViews = Math.round(totalViews / total);
-  const allPrices = DATA.flatMap(p => p.pr);
+  const allPrices = DATA.flatMap(p => (p.pr && Array.isArray(p.pr)) ? p.pr : []);
   const avgPrice = allPrices.length ? (allPrices.reduce((s,v) => s+v, 0) / allPrices.length).toFixed(1) : 0;
   const medianPrice = allPrices.length ? allPrices.sort((a,b) => a-b)[Math.floor(allPrices.length/2)] : 0;
 
@@ -1105,7 +1108,7 @@ function buildStats() {
   let thtml = '<thead><tr><th>Channel</th><th>Posts</th><th>Total Views</th><th>Avg Views</th><th>Posts/Day</th><th>Median Price</th><th>Image Rate</th></tr></thead><tbody>';
   chStats.forEach(c => {
     const posts = DATA.filter(p => p.ch === c.ch);
-    const prs = posts.flatMap(p => p.pr).sort((a,b) => a-b);
+    const prs = posts.flatMap(p => (p.pr && Array.isArray(p.pr)) ? p.pr : []).sort((a,b) => a-b);
     const med = prs.length ? prs[Math.floor(prs.length/2)] : '-';
     const imgR = (posts.filter(p => p.img).length / posts.length * 100).toFixed(0);
     const perDay = (c.count / 90).toFixed(1);
@@ -1117,7 +1120,7 @@ function buildStats() {
   const top30 = [...DATA].sort((a,b) => b.v - a.v).slice(0, 30);
   let topHtml = '<thead><tr><th>#</th><th>Channel</th><th>Views</th><th>Time</th><th>Price</th><th>Preview</th></tr></thead><tbody>';
   top30.forEach((p, i) => {
-    const preview = p.txt.substring(0, 80).replace(/\n/g, ' ') + (p.txt.length > 80 ? '...' : '');
+    const preview = (p.txt||'').substring(0, 80).replace(/\n/g, ' ') + ((p.txt||'').length > 80 ? '...' : '');
     topHtml += `<tr><td>${i+1}</td><td style="color:${CH_COLORS[p.ch]}">${CH_SHORT[p.ch]}</td><td>${p.v.toLocaleString()}</td><td>${p.t ? p.t.substring(5,16).replace('T',' ') : ''}</td><td>${formatPrice(p.pr) || '-'}</td><td style="direction:rtl;text-align:right;max-width:350px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(preview)}</td></tr>`;
   });
   topHtml += '</tbody>';
@@ -1162,7 +1165,7 @@ function getFilteredDetail() {
   let posts = DATA.filter(p => p.img);
   if (ch) posts = posts.filter(p => p.ch === ch);
   if (cat) posts = posts.filter(p => p.cat === cat);
-  if (q) posts = posts.filter(p => p.txt.toLowerCase().includes(q) || p.ch.toLowerCase().includes(q) || p.id.includes(q) || (p.cat && p.cat.toLowerCase().includes(q)));
+  if (q) posts = posts.filter(p => (p.txt||'').toLowerCase().includes(q) || p.ch.toLowerCase().includes(q) || (p.id||'').includes(q) || (p.cat && p.cat.toLowerCase().includes(q)));
   return posts;
 }
 
@@ -1200,8 +1203,8 @@ function renderDetailTable() {
     <td style="font-size:11px;white-space:nowrap;">${p.cat || '-'}${p.pl ? ' <span style="color:#58a6ff;">('+escHtml(p.pl)+')</span>' : ''}</td>
     <td style="font-size:11px;color:#3fb950;white-space:nowrap;">${p.sold ? formatSold(p.sold) : '-'}</td>
     <td style="color:#3fb950;font-weight:600;white-space:nowrap;">${formatPrice(p.pr) || '-'}</td>
-    <td class="txt-cell">${escHtml(p.txt.substring(0, 200))}${p.txt.length > 200 ? '...' : ''}</td>
-    <td class="link-cell">${p.lnk.map(l => '<a href="'+escHtml(l)+'" target="_blank">'+escHtml(l.substring(0,40))+'</a>').join('<br>') || '-'}</td>
+    <td class="txt-cell">${escHtml((p.txt||'').substring(0, 200))}${(p.txt||'').length > 200 ? '...' : ''}</td>
+    <td class="link-cell">${(Array.isArray(p.lnk)?p.lnk:[]).map(l => '<a href="'+escHtml(l)+'" target="_blank">'+escHtml(String(l).substring(0,40))+'</a>').join('<br>') || '-'}</td>
   </tr>`).join('');
 
   let phtml = '';
@@ -1241,7 +1244,20 @@ function renderDetailTable() {
     const text = await blob.text();
     const loaded = JSON.parse(text);
     DATA.length = 0;
-    loaded.forEach(p => DATA.push(p));
+    // Normalize: ensure all fields have safe defaults (data.json may omit lnk/pr/brand/sold)
+    loaded.forEach(p => {
+      if (!p.lnk) p.lnk = [];
+      if (!p.pr) p.pr = [];
+      if (!p.img) p.img = '';
+      if (!p.txt) p.txt = '';
+      if (!p.brand) p.brand = '';
+      if (!p.cat) p.cat = '';
+      if (!p.pl) p.pl = '';
+      if (!p.sold) p.sold = 0;
+      if (!p.v) p.v = 0;
+      if (typeof p.v === 'string') p.v = parseInt(p.v) || 0;
+      DATA.push(p);
+    });
   } catch(e) {
     console.error('Failed to load data:', e);
     document.getElementById('loadingProgress').textContent = 'Error loading data. Please refresh.';
