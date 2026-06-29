@@ -588,6 +588,7 @@ function setLang(lang) {
 // ========== MODULE 1: GALLERY ==========
 let gallerySort = 'views';
 let galleryPage = 0;
+let _initDone = false; // Guard: don't render until init is complete
 const GALLERY_PAGE_SIZE = 40;
 
 function setSort(mode) {
@@ -615,22 +616,30 @@ let _filterMemo = {};       // cache key -> sorted result array
 let _renderVersion = 0;     // for cancelling stale translations
 
 function buildIndexes() {
-  _postsWithImg = DATA.filter(p => p.img);
-  _periodIndexes = {};
-  _filterMemo = {};
+  try {
+    _postsWithImg = DATA.filter(p => p.img);
+    _periodIndexes = {};
+    _filterMemo = {};
 
-  const periods = ['', 'this_week', 'last_week', 'may', 'apr', 'mar'];
-  periods.forEach(pv => {
-    const subset = pv ? _postsWithImg.filter(p => getPeriod(p.t) === pv) : _postsWithImg;
-    const byTime = [...subset].sort((a,b) => b.t.localeCompare(a.t));
-    const byViews = [...subset].sort((a,b) => b.v - a.v);
-    const byPrice = [...subset].sort((a,b) => {
-      const pa = a.pr.length ? a.pr[0] : 99999;
-      const pb = b.pr.length ? b.pr[0] : 99999;
-      return pa - pb;
+    const periods = ['', 'this_week', 'last_week', 'may', 'apr', 'mar'];
+    periods.forEach(pv => {
+      const subset = pv ? _postsWithImg.filter(p => getPeriod(p.t) === pv) : _postsWithImg;
+      const byTime = [...subset].sort((a,b) => (b.t||'').localeCompare(a.t||''));
+      const byViews = [...subset].sort((a,b) => (b.v||0) - (a.v||0));
+      const byPrice = [...subset].sort((a,b) => {
+        const pa = (a.pr && a.pr.length) ? a.pr[0] : 99999;
+        const pb = (b.pr && b.pr.length) ? b.pr[0] : 99999;
+        return pa - pb;
+      });
+      _periodIndexes[pv] = { time: byTime, views: byViews, price: byPrice };
     });
-    _periodIndexes[pv] = { time: byTime, views: byViews, price: byPrice };
-  });
+    console.log('[buildIndexes] Done:', _postsWithImg.length, 'posts,', Object.keys(_periodIndexes).length, 'periods');
+  } catch(e) {
+    console.error('[buildIndexes] ERROR:', e);
+    // Fallback: at least have empty-all available
+    _postsWithImg = DATA.filter(p => p.img);
+    _periodIndexes[''] = { time: _postsWithImg, views: _postsWithImg, price: _postsWithImg };
+  }
 }
 
 function getFilteredPosts() {
@@ -643,7 +652,9 @@ function getFilteredPosts() {
   if (_filterMemo[memoKey]) return _filterMemo[memoKey];
 
   // Start from pre-sorted period data (biggest perf win)
-  let posts = _periodIndexes[period || ''][gallerySort];
+  const pidx = _periodIndexes[period || ''];
+  let posts = pidx ? pidx[gallerySort] : _postsWithImg;
+  if (!posts) posts = [];
 
   // Apply remaining filters (on pre-sorted, period-filtered subset)
   if (ch) posts = posts.filter(p => p.ch === ch);
@@ -823,6 +834,7 @@ function buildCard(p, idx) {
 let _loadingTimer = null;
 
 function renderGallery() {
+  if (!_initDone) return; // Skip render until init is complete
   // Cancel any pending render
   if (_renderRAF) cancelAnimationFrame(_renderRAF);
   // Show loading overlay only if render takes >200ms (instant ops won't flash)
@@ -834,56 +846,61 @@ function renderGallery() {
 }
 
 function _doRenderGallery() {
-  const grid = document.getElementById('galleryGrid');
-  const posts = getFilteredPosts();
-  const show = posts.slice(0, (galleryPage + 1) * GALLERY_PAGE_SIZE);
-  document.getElementById('galleryCount').textContent = show.length + ' / ' + posts.length + ' posts';
-  document.getElementById('loadMore').style.display = show.length < posts.length ? 'block' : 'none';
+  try {
+    const grid = document.getElementById('galleryGrid');
+    const posts = getFilteredPosts();
+    const show = posts.slice(0, (galleryPage + 1) * GALLERY_PAGE_SIZE);
+    document.getElementById('galleryCount').textContent = show.length + ' / ' + posts.length + ' posts';
+    document.getElementById('loadMore').style.display = show.length < posts.length ? 'block' : 'none';
 
-  // Build new card set, reusing cached DOM elements where possible
-  const fragment = document.createDocumentFragment();
-  const needsTranslation = [];
-  const thisVersion = _renderVersion;
+    // Build new card set, reusing cached DOM elements where possible
+    const fragment = document.createDocumentFragment();
+    const needsTranslation = [];
+    const thisVersion = _renderVersion;
 
-  show.forEach((p, idx) => {
-    let card = _cardCache[p.id];
-    if (!card) {
-      card = buildCard(p, idx);
-      _cardCache[p.id] = card;
-      if (_lang === 'zh') needsTranslation.push({ card, txt: p.txt });
-    } else {
-      // Update index for modal click
-      card.setAttribute('data-tidx', idx);
-      card.onclick = () => openModal(idx);
-    }
-    fragment.appendChild(card);
-  });
-
-  // Atomic swap: replaceChildren avoids the black-screen flash of innerHTML=''
-  grid.replaceChildren(fragment);
-
-  // Hide loading overlay
-  if (_loadingTimer) { clearTimeout(_loadingTimer); _loadingTimer = null; }
-  document.getElementById('galleryLoading').classList.remove('show');
-
-  // Trigger translations only for newly built cards in Chinese mode
-  if (needsTranslation.length > 0) {
-    const texts = needsTranslation.map(n => n.txt);
-    translateBatch(texts).then(results => {
-      if (_renderVersion !== thisVersion) return; // stale, skip
-      needsTranslation.forEach(n => {
-        const el = n.card.querySelector('[data-htext]');
-        if (!el) return;
-        const translated = results[n.txt];
-        if (translated) {
-          el.textContent = translated;
-          el.className = 'hover-text ltr';
-        } else if (translated === null) {
-          el.textContent = n.txt.substring(0, 500);
-          el.className = 'hover-text rtl';
-        }
-      });
+    show.forEach((p, idx) => {
+      let card = _cardCache[p.id];
+      if (!card) {
+        card = buildCard(p, idx);
+        _cardCache[p.id] = card;
+        if (_lang === 'zh') needsTranslation.push({ card, txt: p.txt });
+      } else {
+        // Update index for modal click
+        card.setAttribute('data-tidx', idx);
+        card.onclick = () => openModal(idx);
+      }
+      fragment.appendChild(card);
     });
+
+    // Atomic swap: clear then append in one synchronous batch
+    while (grid.firstChild) grid.removeChild(grid.firstChild);
+    grid.appendChild(fragment);
+
+    // Trigger translations only for newly built cards in Chinese mode
+    if (needsTranslation.length > 0) {
+      const texts = needsTranslation.map(n => n.txt);
+      translateBatch(texts).then(results => {
+        if (_renderVersion !== thisVersion) return; // stale, skip
+        needsTranslation.forEach(n => {
+          const el = n.card.querySelector('[data-htext]');
+          if (!el) return;
+          const translated = results[n.txt];
+          if (translated) {
+            el.textContent = translated;
+            el.className = 'hover-text ltr';
+          } else if (translated === null) {
+            el.textContent = n.txt.substring(0, 500);
+            el.className = 'hover-text rtl';
+          }
+        });
+      });
+    }
+  } catch(e) {
+    console.error('[renderGallery] ERROR:', e);
+  } finally {
+    // Always hide loading overlay, even if render failed
+    if (_loadingTimer) { clearTimeout(_loadingTimer); _loadingTimer = null; }
+    document.getElementById('galleryLoading').classList.remove('show');
   }
 }
 
@@ -1265,6 +1282,7 @@ function renderDetailTable() {
   const totalDays = Math.round((new Date(lastDate) - new Date(firstDate)) / 86400000) + 1;
   const imgPosts = DATA.filter(p => p.img).length;
   document.getElementById('subtitleMeta').innerHTML = CHANNELS.length + ' Channels &middot; ' + imgPosts.toLocaleString() + ' Posts (with images) &middot; ' + firstDate.slice(5).replace('-',' ') + ' - ' + lastDate.slice(5).replace('-',' ') + ', 2026 (' + totalDays + ' Days)';
+  _initDone = true;
   renderGallery();
   setupInfiniteScroll();
 })();
