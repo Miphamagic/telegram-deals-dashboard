@@ -69,7 +69,7 @@ select.ch-filter { padding:7px 12px; font-size:13px; border:1px solid #30363d; b
 .lang-toggle button.active { background:#58a6ff; color:#fff; }
 .translating { color:#8b92a5; font-style:italic; animation:pulse 1.5s infinite; }
 @keyframes pulse { 0%,100%{ opacity:1; } 50%{ opacity:0.5; } }
-.gallery-loading { position:absolute; top:0; left:0; right:0; bottom:0; background:rgba(15,17,23,0.75); display:flex; align-items:center; justify-content:center; z-index:50; opacity:0; pointer-events:none; transition:opacity 0.2s ease; }
+.gallery-loading { position:absolute; top:0; left:0; right:0; bottom:0; background:rgba(15,17,23,0.5); backdrop-filter:blur(2px); display:flex; align-items:center; justify-content:center; z-index:50; opacity:0; pointer-events:none; transition:opacity 0.15s ease; }
 .gallery-loading.show { opacity:1; pointer-events:auto; }
 .gallery-loading .gl-spinner { width:32px; height:32px; border:3px solid #21262d; border-top:3px solid #58a6ff; border-radius:50%; animation:spin 0.7s linear infinite; }
 .gallery-loading .gl-text { margin-left:12px; color:#8b92a5; font-size:13px; }
@@ -580,6 +580,8 @@ function setLang(lang) {
   document.querySelectorAll('#langToggle button').forEach(b => b.classList.remove('active'));
   event.target.classList.add('active');
   _cardCache = {}; // Rebuild cards for new language direction
+  _filterMemo = {}; // Clear filter cache
+  _renderVersion++; // Cancel in-flight translations
   renderGallery();
 }
 
@@ -606,29 +608,58 @@ function getPeriod(t) {
   return null;
 }
 
+// ========== PRE-COMPUTED INDEXES FOR INSTANT FILTERING ==========
+let _postsWithImg = [];
+let _periodIndexes = {};   // period -> pre-sorted arrays by each sort mode
+let _filterMemo = {};       // cache key -> sorted result array
+let _renderVersion = 0;     // for cancelling stale translations
+
+function buildIndexes() {
+  _postsWithImg = DATA.filter(p => p.img);
+  _periodIndexes = {};
+  _filterMemo = {};
+
+  const periods = ['', 'this_week', 'last_week', 'may', 'apr', 'mar'];
+  periods.forEach(pv => {
+    const subset = pv ? _postsWithImg.filter(p => getPeriod(p.t) === pv) : _postsWithImg;
+    const byTime = [...subset].sort((a,b) => b.t.localeCompare(a.t));
+    const byViews = [...subset].sort((a,b) => b.v - a.v);
+    const byPrice = [...subset].sort((a,b) => {
+      const pa = a.pr.length ? a.pr[0] : 99999;
+      const pb = b.pr.length ? b.pr[0] : 99999;
+      return pa - pb;
+    });
+    _periodIndexes[pv] = { time: byTime, views: byViews, price: byPrice };
+  });
+}
+
 function getFilteredPosts() {
   const ch = document.getElementById('chFilter').value;
   const period = document.getElementById('periodFilter').value;
   const cat = document.getElementById('catFilter').value;
   const brand = document.getElementById('brandFilter').value;
-  let posts = DATA.filter(p => p.img);
+  const memoKey = ch + '|' + period + '|' + cat + '|' + brand + '|' + gallerySort;
+
+  if (_filterMemo[memoKey]) return _filterMemo[memoKey];
+
+  // Start from pre-sorted period data (biggest perf win)
+  let posts = _periodIndexes[period || ''][gallerySort];
+
+  // Apply remaining filters (on pre-sorted, period-filtered subset)
   if (ch) posts = posts.filter(p => p.ch === ch);
-  if (period) posts = posts.filter(p => getPeriod(p.t) === period);
   if (cat) posts = posts.filter(p => p.cat === cat);
-  if (brand) posts = posts.filter(p => p.brand && p.brand.toLowerCase().includes(brand.toLowerCase()));
+  if (brand) {
+    const bl = brand.toLowerCase();
+    posts = posts.filter(p => p.brand && p.brand.toLowerCase().includes(bl));
+  }
+
+  _filterMemo[memoKey] = posts;
   return posts;
 }
 
 function sortPosts(posts) {
-  const sorted = [...posts];
-  if (gallerySort === 'time') sorted.sort((a,b) => b.t.localeCompare(a.t));
-  else if (gallerySort === 'views') sorted.sort((a,b) => b.v - a.v);
-  else if (gallerySort === 'price') sorted.sort((a,b) => {
-    const pa = a.pr.length ? a.pr[0] : 99999;
-    const pb = b.pr.length ? b.pr[0] : 99999;
-    return pa - pb;
-  });
-  return sorted;
+  // Already pre-sorted via getFilteredPosts, return as-is
+  return posts;
 }
 
 function formatPrice(pr) {
@@ -794,25 +825,25 @@ let _loadingTimer = null;
 function renderGallery() {
   // Cancel any pending render
   if (_renderRAF) cancelAnimationFrame(_renderRAF);
-  // Show loading overlay after a short delay (only if render is slow)
+  // Show loading overlay only if render takes >200ms (instant ops won't flash)
   if (_loadingTimer) clearTimeout(_loadingTimer);
   _loadingTimer = setTimeout(() => {
     document.getElementById('galleryLoading').classList.add('show');
-  }, 80);
+  }, 200);
   _renderRAF = requestAnimationFrame(_doRenderGallery);
 }
 
 function _doRenderGallery() {
   const grid = document.getElementById('galleryGrid');
-  const posts = sortPosts(getFilteredPosts());
+  const posts = getFilteredPosts();
   const show = posts.slice(0, (galleryPage + 1) * GALLERY_PAGE_SIZE);
   document.getElementById('galleryCount').textContent = show.length + ' / ' + posts.length + ' posts';
   document.getElementById('loadMore').style.display = show.length < posts.length ? 'block' : 'none';
 
   // Build new card set, reusing cached DOM elements where possible
-  const newIds = new Set(show.map(p => p.id));
   const fragment = document.createDocumentFragment();
   const needsTranslation = [];
+  const thisVersion = _renderVersion;
 
   show.forEach((p, idx) => {
     let card = _cardCache[p.id];
@@ -828,9 +859,8 @@ function _doRenderGallery() {
     fragment.appendChild(card);
   });
 
-  // Remove cards not in current view (keep in cache)
-  grid.innerHTML = '';
-  grid.appendChild(fragment);
+  // Atomic swap: replaceChildren avoids the black-screen flash of innerHTML=''
+  grid.replaceChildren(fragment);
 
   // Hide loading overlay
   if (_loadingTimer) { clearTimeout(_loadingTimer); _loadingTimer = null; }
@@ -840,6 +870,7 @@ function _doRenderGallery() {
   if (needsTranslation.length > 0) {
     const texts = needsTranslation.map(n => n.txt);
     translateBatch(texts).then(results => {
+      if (_renderVersion !== thisVersion) return; // stale, skip
       needsTranslation.forEach(n => {
         const el = n.card.querySelector('[data-htext]');
         if (!el) return;
@@ -857,7 +888,7 @@ function _doRenderGallery() {
 }
 
 function loadMoreCards() {
-  const posts = sortPosts(getFilteredPosts());
+  const posts = getFilteredPosts();
   const currentCount = (galleryPage + 1) * GALLERY_PAGE_SIZE;
   if (currentCount < posts.length) {
     galleryPage++;
@@ -884,7 +915,7 @@ let _modalPosts = [];
 let _modalIdx = 0;
 
 function openModal(idx) {
-  _modalPosts = sortPosts(getFilteredPosts());
+  _modalPosts = getFilteredPosts();
   _modalIdx = idx;
   renderModal();
   document.getElementById('modalOverlay').classList.add('active');
@@ -1227,6 +1258,8 @@ function renderDetailTable() {
   });
   // Build brand counts for the searchable dropdown
   buildBrandCounts();
+  // Pre-compute filter indexes for instant switching
+  buildIndexes();
   // Update subtitle with actual date range
   const firstDate = DAILY[0].date, lastDate = DAILY[DAILY.length-1].date;
   const totalDays = Math.round((new Date(lastDate) - new Date(firstDate)) / 86400000) + 1;
