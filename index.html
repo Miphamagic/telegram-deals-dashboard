@@ -69,6 +69,10 @@ select.ch-filter { padding:7px 12px; font-size:13px; border:1px solid #30363d; b
 .lang-toggle button.active { background:#58a6ff; color:#fff; }
 .translating { color:#8b92a5; font-style:italic; animation:pulse 1.5s infinite; }
 @keyframes pulse { 0%,100%{ opacity:1; } 50%{ opacity:0.5; } }
+.gallery-loading { position:absolute; top:0; left:0; right:0; bottom:0; background:rgba(15,17,23,0.75); display:flex; align-items:center; justify-content:center; z-index:50; opacity:0; pointer-events:none; transition:opacity 0.2s ease; }
+.gallery-loading.show { opacity:1; pointer-events:auto; }
+.gallery-loading .gl-spinner { width:32px; height:32px; border:3px solid #21262d; border-top:3px solid #58a6ff; border-radius:50%; animation:spin 0.7s linear infinite; }
+.gallery-loading .gl-text { margin-left:12px; color:#8b92a5; font-size:13px; }
 .load-more { text-align:center; padding:20px; }
 .load-more button { padding:10px 32px; font-size:14px; border:1px solid #30363d; background:#21262d; color:#c9d1d9; border-radius:8px; cursor:pointer; }
 .load-more button:hover { background:#30363d; }
@@ -172,7 +176,7 @@ select.ch-filter { padding:7px 12px; font-size:13px; border:1px solid #30363d; b
 </div>
 
 <!-- Module 0: Product Gallery (first tab) -->
-<div class="panel active" id="panel0">
+<div class="panel active" id="panel0" style="position:relative;">
   <div class="controls">
     <label>Sort by:</label>
     <div class="btn-group" id="sortGroup">
@@ -212,6 +216,7 @@ select.ch-filter { padding:7px 12px; font-size:13px; border:1px solid #30363d; b
     </div>
     <span id="galleryCount" style="font-size:13px;color:#8b92a5;"></span>
   </div>
+  <div class="gallery-loading" id="galleryLoading"><div class="gl-spinner"></div><div class="gl-text">Switching view...</div></div>
   <div class="grid" id="galleryGrid"></div>
   <div id="scrollSentinel" style="height:1px;"></div>
   <div class="load-more" id="loadMore" style="display:none;">
@@ -574,6 +579,7 @@ function setLang(lang) {
   _lang = lang;
   document.querySelectorAll('#langToggle button').forEach(b => b.classList.remove('active'));
   event.target.classList.add('active');
+  _cardCache = {}; // Rebuild cards for new language direction
   renderGallery();
 }
 
@@ -746,22 +752,24 @@ document.addEventListener('click', function(e) {
   }
 });
 
-function renderGallery() {
-  const grid = document.getElementById('galleryGrid');
-  const posts = sortPosts(getFilteredPosts());
-  const show = posts.slice(0, (galleryPage + 1) * GALLERY_PAGE_SIZE);
-  document.getElementById('galleryCount').textContent = show.length + ' / ' + posts.length + ' posts';
-  document.getElementById('loadMore').style.display = show.length < posts.length ? 'block' : 'none';
+// ========== GALLERY RENDERING (OPTIMIZED) ==========
+let _cardCache = {}; // Map postId -> DOM element
+let _renderRAF = null;
 
-  grid.innerHTML = show.map((p, idx) => {
-    const color = CH_COLORS[p.ch] || '#666';
-    const short = CH_SHORT[p.ch] || p.ch;
-    const priceStr = formatPrice(p.pr);
-    const linkHtml = p.lnk.length ? p.lnk.map(l => '<a class="hover-link" href="'+escHtml(l)+'" target="_blank" onclick="event.stopPropagation()">&#128279; '+escHtml(l.substring(0,45))+'...</a>').join('<br>') : '';
-    const isZh = _lang === 'zh';
-    const textDir = isZh ? 'ltr' : 'rtl';
-    const displayText = isZh ? '<span class="translating">翻译中...</span>' : escHtml(p.txt.substring(0, 500));
-    return `<div class="card" data-tidx="${idx}" onclick="openModal(${idx})">
+function buildCard(p, idx) {
+  const color = CH_COLORS[p.ch] || '#666';
+  const short = CH_SHORT[p.ch] || p.ch;
+  const priceStr = formatPrice(p.pr);
+  const linkHtml = p.lnk.length ? p.lnk.map(l => '<a class="hover-link" href="'+escHtml(l)+'" target="_blank" onclick="event.stopPropagation()">&#128279; '+escHtml(l.substring(0,45))+'...</a>').join('<br>') : '';
+  const isZh = _lang === 'zh';
+  const textDir = isZh ? 'ltr' : 'rtl';
+  const displayText = isZh ? '<span class="translating">翻译中...</span>' : escHtml(p.txt.substring(0, 500));
+  const div = document.createElement('div');
+  div.className = 'card';
+  div.setAttribute('data-tidx', idx);
+  div.setAttribute('data-pid', p.id);
+  div.onclick = () => openModal(idx);
+  div.innerHTML = `
       ${p.img ? '<img loading="lazy" src="'+escHtml(p.img)+'" onerror="this.style.display=\'none\'">' : '<div style="height:200px;background:#0d1117;display:flex;align-items:center;justify-content:center;color:#30363d;font-size:40px;">&#128247;</div>'}
       ${priceStr ? '<div class="price-badge">'+priceStr+'</div>' : ''}
       <div class="card-body">
@@ -777,25 +785,70 @@ function renderGallery() {
         <div class="hover-title">${short} &middot; ${formatViews(p.v)} views &middot; ${p.t ? p.t.substring(0,16).replace('T',' ') : ''}</div>
         <div class="hover-text ${textDir}" data-htext="1">${displayText}</div>
         ${linkHtml}
-      </div>
-    </div>`;
-  }).join('');
+      </div>`;
+  return div;
+}
 
-  // Trigger translations for visible cards if Chinese mode
-  if (_lang === 'zh') {
-    const texts = show.map(p => p.txt);
+let _loadingTimer = null;
+
+function renderGallery() {
+  // Cancel any pending render
+  if (_renderRAF) cancelAnimationFrame(_renderRAF);
+  // Show loading overlay after a short delay (only if render is slow)
+  if (_loadingTimer) clearTimeout(_loadingTimer);
+  _loadingTimer = setTimeout(() => {
+    document.getElementById('galleryLoading').classList.add('show');
+  }, 80);
+  _renderRAF = requestAnimationFrame(_doRenderGallery);
+}
+
+function _doRenderGallery() {
+  const grid = document.getElementById('galleryGrid');
+  const posts = sortPosts(getFilteredPosts());
+  const show = posts.slice(0, (galleryPage + 1) * GALLERY_PAGE_SIZE);
+  document.getElementById('galleryCount').textContent = show.length + ' / ' + posts.length + ' posts';
+  document.getElementById('loadMore').style.display = show.length < posts.length ? 'block' : 'none';
+
+  // Build new card set, reusing cached DOM elements where possible
+  const newIds = new Set(show.map(p => p.id));
+  const fragment = document.createDocumentFragment();
+  const needsTranslation = [];
+
+  show.forEach((p, idx) => {
+    let card = _cardCache[p.id];
+    if (!card) {
+      card = buildCard(p, idx);
+      _cardCache[p.id] = card;
+      if (_lang === 'zh') needsTranslation.push({ card, txt: p.txt });
+    } else {
+      // Update index for modal click
+      card.setAttribute('data-tidx', idx);
+      card.onclick = () => openModal(idx);
+    }
+    fragment.appendChild(card);
+  });
+
+  // Remove cards not in current view (keep in cache)
+  grid.innerHTML = '';
+  grid.appendChild(fragment);
+
+  // Hide loading overlay
+  if (_loadingTimer) { clearTimeout(_loadingTimer); _loadingTimer = null; }
+  document.getElementById('galleryLoading').classList.remove('show');
+
+  // Trigger translations only for newly built cards in Chinese mode
+  if (needsTranslation.length > 0) {
+    const texts = needsTranslation.map(n => n.txt);
     translateBatch(texts).then(results => {
-      grid.querySelectorAll('.card').forEach(card => {
-        const idx = parseInt(card.getAttribute('data-tidx'));
-        const txt = texts[idx];
-        const el = card.querySelector('[data-htext]');
+      needsTranslation.forEach(n => {
+        const el = n.card.querySelector('[data-htext]');
         if (!el) return;
-        const translated = results[txt];
+        const translated = results[n.txt];
         if (translated) {
           el.textContent = translated;
           el.className = 'hover-text ltr';
         } else if (translated === null) {
-          el.textContent = txt.substring(0, 500);
+          el.textContent = n.txt.substring(0, 500);
           el.className = 'hover-text rtl';
         }
       });
