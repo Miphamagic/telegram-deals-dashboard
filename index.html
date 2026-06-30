@@ -191,9 +191,6 @@ select.ch-filter { padding:7px 12px; font-size:13px; border:1px solid #30363d; b
       <option value="">All Time</option>
       <option value="this_week" id="optThisWeek">This Week</option>
       <option value="last_week" id="optLastWeek">Last Week</option>
-      <option value="may">May 2026</option>
-      <option value="apr">Apr 2026</option>
-      <option value="mar">Mar 2026</option>
     </select>
     <label>Category:</label>
     <select class="ch-filter" id="catFilter" onchange="galleryPage=0;renderGallery()">
@@ -345,6 +342,40 @@ const _WL = computeWeekLabels();
 // Update period dropdown labels
 document.getElementById('optThisWeek').textContent = 'This Week (' + _WL.thisWeekLabel + ')';
 document.getElementById('optLastWeek').textContent = 'Last Week (' + _WL.lastWeekLabel + ')';
+
+// Dynamic month options from SUMMARY
+const _MNAMES_FULL = {jan:'Jan',feb:'Feb',mar:'Mar',apr:'Apr',may:'May',jun:'Jun',jul:'Jul',aug:'Aug',sep:'Sep',oct:'Oct',nov:'Nov',dec:'Dec'};
+const _monthKeys = Object.keys(SUMMARY).filter(k => k !== 'this_week' && k !== 'last_week');
+const _monthRanges = []; // [{key, startISO}] for getPeriod()
+const _periodSel = document.getElementById('periodFilter');
+_monthKeys.forEach(mk => {
+  // Compute year and month number from the data: find a post date that matches
+  // Use DAILY to find the year-month for this key
+  const mIdx = Object.keys(_MNAMES_FULL).indexOf(mk); // 0-11
+  const mm = mIdx + 1;
+  // Infer year from DAILY dates
+  let yr = new Date(DAILY[DAILY.length-1].date).getFullYear();
+  // If month is ahead of current month, it must be last year
+  if (mm > new Date(DAILY[DAILY.length-1].date).getMonth() + 1) yr--;
+  const startISO = yr + '-' + String(mm).padStart(2,'0') + '-01';
+  _monthRanges.push({key: mk, start: startISO});
+  const opt = document.createElement('option');
+  opt.value = mk;
+  opt.textContent = _MNAMES_FULL[mk] + ' ' + yr;
+  _periodSel.appendChild(opt);
+});
+// Sort month ranges by start date descending for getPeriod()
+_monthRanges.sort((a,b) => b.start.localeCompare(a.start));
+
+function getPeriod(t) {
+  if (!t) return null;
+  if (t >= _WL.thisWeekISO) return 'this_week';
+  if (t >= _WL.lastWeekISO) return 'last_week';
+  for (const mr of _monthRanges) {
+    if (t >= mr.start) return mr.key;
+  }
+  return null;
+}
 
 // Lazy-load Chart.js only when needed
 let _chartLoaded = false;
@@ -604,16 +635,6 @@ function setSort(mode) {
   renderGallery();
 }
 
-function getPeriod(t) {
-  if (!t) return null;
-  if (t >= _WL.thisWeekISO) return 'this_week';
-  if (t >= _WL.lastWeekISO) return 'last_week';
-  if (t >= '2026-05-01') return 'may';
-  if (t >= '2026-04-01') return 'apr';
-  if (t >= '2026-03-12') return 'mar';
-  return null;
-}
-
 // ========== PRE-COMPUTED INDEXES FOR INSTANT FILTERING ==========
 let _postsWithImg = [];
 let _periodIndexes = {};   // period -> pre-sorted arrays by each sort mode
@@ -626,7 +647,7 @@ function buildIndexes() {
     _periodIndexes = {};
     _filterMemo = {};
 
-    const periods = ['', 'this_week', 'last_week', 'may', 'apr', 'mar'];
+    const periods = ['', 'this_week', 'last_week'].concat(_monthKeys);
     periods.forEach(pv => {
       const subset = pv ? _postsWithImg.filter(p => getPeriod(p.t) === pv) : _postsWithImg;
       const byTime = [...subset].sort((a,b) => (b.t||'').localeCompare(a.t||''));
